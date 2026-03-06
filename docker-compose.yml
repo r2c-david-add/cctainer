@@ -1,0 +1,11 @@
+services:
+  claude:
+    build: .
+    image: cctainer:latest
+    stdin_open: true
+    tty: true
+    volumes:
+      # Mount your repo here — override SRC_DIR when launching
+      - ${SRC_DIR:-.}:/src
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
