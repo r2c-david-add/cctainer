@@ -25,9 +25,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Common mounts for Claude auth, config, MCP, and Google Workspace
 CLAUDE_MOUNTS=(
-    -v "$HOME/.claude.json:/home/claude/.claude.json"
+    -v "$HOME/.claude.json:/home/claude/.claude.json:ro"
     -v "$HOME/.claude:/home/claude/.claude"
-    -v "$HOME/.config/gh:/home/claude/.config/gh"
+    -v "$HOME/.config/gh:/home/claude/.config/gh:ro"
     -v "$HOME/.config/gws:/home/claude/.config/gws"
     -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
 )
