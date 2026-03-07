@@ -38,12 +38,12 @@ fi
 
 if [ "${1:-}" = "dispatch" ]; then
     shift
-    exec python3 "$SCRIPT_DIR/dispatch.py" dispatch "$@"
+    exec "$SCRIPT_DIR/.venv/bin/python3" "$SCRIPT_DIR/dispatch.py" dispatch "$@"
 fi
 
 if [ "${1:-}" = "status" ]; then
     shift
-    exec python3 "$SCRIPT_DIR/dispatch.py" status "$@"
+    exec "$SCRIPT_DIR/.venv/bin/python3" "$SCRIPT_DIR/dispatch.py" status "$@"
 fi
 
 if [ "${1:-}" = "plan" ]; then
