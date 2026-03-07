@@ -23,6 +23,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 #   ./run.sh gws-setup                              # configure GCP project + OAuth
 #   ./run.sh gws-auth                               # log in to Google Workspace
 
+# Common mounts for Claude auth, config, MCP, and Google Workspace
+CLAUDE_MOUNTS=(
+    -v "$HOME/.claude.json:/home/claude/.claude.json"
+    -v "$HOME/.claude:/home/claude/.claude"
+    -v "$HOME/.config/gws:/home/claude/.config/gws"
+    -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
+)
+
 if [ "${1:-}" = "build" ]; then
     echo "Building cctainer image..."
     exec docker build -t cctainer:latest "$SCRIPT_DIR"
@@ -67,9 +75,7 @@ Set \`repo: /src/${REPO_NAME}\` in the manifest."
 
     exec docker run --rm -it \
         -v "$PARENT_DIR":/src \
-        -v "$HOME/.claude":/home/claude/.claude \
-        -v "$HOME/.config/gws":/home/claude/.config/gws \
-        -e ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}" \
+        "${CLAUDE_MOUNTS[@]}" \
         cctainer:latest \
         --system-prompt "$PLAN_PROMPT"
 fi
@@ -105,8 +111,6 @@ shift 2>/dev/null || true
 
 exec docker run --rm -it \
     -v "$SRC_DIR":/src \
-    -v "$HOME/.claude":/home/claude/.claude \
-    -v "$HOME/.config/gws":/home/claude/.config/gws \
-    -e ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}" \
+    "${CLAUDE_MOUNTS[@]}" \
     cctainer:latest \
     "$@"
