@@ -102,6 +102,7 @@ def launch_container(worktree: str, prompt: str, branch: str, log_path: str) -> 
                 "-v", f"{worktree}:/src",
                 "-v", f"{home}/.claude.json:/home/claude/.claude.json",
                 "-v", f"{home}/.claude:/home/claude/.claude",
+                "-v", f"{home}/.config/gh:/home/claude/.config/gh",
                 "-v", f"{home}/.config/gws:/home/claude/.config/gws",
                 "-e", f"ANTHROPIC_API_KEY={os.environ.get('ANTHROPIC_API_KEY', '')}",
                 "cctainer:latest",

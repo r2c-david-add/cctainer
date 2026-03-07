@@ -27,6 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_MOUNTS=(
     -v "$HOME/.claude.json:/home/claude/.claude.json"
     -v "$HOME/.claude:/home/claude/.claude"
+    -v "$HOME/.config/gh:/home/claude/.config/gh"
     -v "$HOME/.config/gws:/home/claude/.config/gws"
     -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
 )
