@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y \
 # Also make python3 the default `python`
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
-# Install Claude Code globally
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude Code and Google Workspace CLI globally
+RUN npm install -g @anthropic-ai/claude-code @googleworkspace/cli
 
 # Create workspace directory for mounted repos
 RUN mkdir -p /src
@@ -41,8 +41,9 @@ RUN pipx install semgrep && \
 # Make pipx binaries available
 ENV PATH="/home/claude/.local/bin:${PATH}"
 
-# Pre-accept the terms so --dangerously-skip-permissions works non-interactively
-RUN mkdir -p /home/claude/.claude && \
-    echo '{"hasCompletedOnboarding": true, "acceptedTerms": true}' > /home/claude/.claude/settings.json
+# ~/.claude is mounted from the host at runtime to provide
+# user profile, MCP config, and settings.
+# ~/.config/gws is mounted for Google Workspace OAuth tokens.
+RUN mkdir -p /home/claude/.claude /home/claude/.config/gws
 
 ENTRYPOINT ["claude", "--dangerously-skip-permissions"]
