@@ -13,6 +13,13 @@
 repo: /src/my-project
 base: main
 
+# Optional: extra read-only mounts available to all agents
+# mounts:
+#   - src: /src/reference-codebase    # host path (or /src-relative container path)
+#     dst: /ref                        # where it appears inside each container
+#   - src: ~/data/shared-fixtures
+#     dst: /fixtures
+
 features:
   - branch: feat/add-widget
     prompt: |

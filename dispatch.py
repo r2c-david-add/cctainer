@@ -43,6 +43,19 @@ def load_manifest(path: str, repo_override: str = None) -> dict:
         manifest["repo"] = str(Path(os.path.expanduser(repo)).resolve())
     manifest.setdefault("base", "main")
 
+    # Resolve extra mounts — container paths like /ref map from /src-relative host paths
+    resolved_mounts = []
+    for mount in manifest.get("mounts", []):
+        host_path = mount["src"]
+        container_path = mount["dst"]
+        if host_path.startswith("/src"):
+            relative = host_path[len("/src"):].lstrip("/")
+            host_path = os.path.join(manifest_dir, relative) if relative else manifest_dir
+        else:
+            host_path = str(Path(os.path.expanduser(host_path)).resolve())
+        resolved_mounts.append({"src": host_path, "dst": container_path})
+    manifest["mounts"] = resolved_mounts
+
     for feat in manifest.get("features", []):
         if "branch" not in feat or "prompt" not in feat:
             print(f"Error: each feature needs 'branch' and 'prompt': {feat}", file=sys.stderr)
@@ -90,10 +103,15 @@ def log_dir_for(repo: str) -> str:
     return os.path.join(os.path.dirname(repo), f"{repo_name}--_logs")
 
 
-def launch_container(worktree: str, prompt: str, branch: str, log_path: str) -> subprocess.Popen:
+def launch_container(worktree: str, prompt: str, branch: str, log_path: str,
+                     extra_mounts: list) -> subprocess.Popen:
     """Launch a cctainer in the background with the given prompt."""
     log_file = os.path.join(log_path, f"{branch.replace('/', '-')}.log")
     home = os.path.expanduser("~")
+
+    mount_args = []
+    for m in extra_mounts:
+        mount_args.extend(["-v", f"{m['src']}:{m['dst']}:ro"])
 
     with open(log_file, "w") as log:
         proc = subprocess.Popen(
@@ -105,6 +123,7 @@ def launch_container(worktree: str, prompt: str, branch: str, log_path: str) -> 
                 "-v", f"{home}/.config/gh:/home/claude/.config/gh:ro",
                 "-v", f"{home}/.config/gws:/home/claude/.config/gws",
                 "-e", f"ANTHROPIC_API_KEY={os.environ.get('ANTHROPIC_API_KEY', '')}",
+                *mount_args,
                 "cctainer:latest",
                 "--print", prompt,
             ],
@@ -119,6 +138,7 @@ def dispatch(manifest_path: str):
     repo = manifest["repo"]
     base = manifest["base"]
     features = manifest["features"]
+    mounts = manifest.get("mounts", [])
 
     logs = log_dir_for(repo)
     os.makedirs(logs, exist_ok=True)
@@ -126,6 +146,10 @@ def dispatch(manifest_path: str):
     print(f"Repo:     {repo}")
     print(f"Base:     {base}")
     print(f"Features: {len(features)}")
+    if mounts:
+        print(f"Mounts:   {len(mounts)}")
+        for m in mounts:
+            print(f"  {m['src']} → {m['dst']} (ro)")
     print(f"Logs:     {logs}/")
     print()
 
@@ -146,7 +170,7 @@ def dispatch(manifest_path: str):
         branch = feat["branch"]
         prompt = feat["prompt"]
         print(f"  {branch}")
-        procs[branch] = launch_container(worktrees[branch], prompt, branch, logs)
+        procs[branch] = launch_container(worktrees[branch], prompt, branch, logs, mounts)
     print()
 
     print("Waiting for agents to complete...")

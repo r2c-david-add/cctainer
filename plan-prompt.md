@@ -16,12 +16,18 @@ Your job is to explore the codebase, discuss the work with the user, and produce
 repo: /src/repo-name
 base: main
 
+# Optional: extra read-only mounts available to all dispatched agents
+mounts:
+  - src: /src/other-codebase    # resolved relative to manifest location
+    dst: /ref                    # mount point inside each agent's container
+
 features:
   - branch: feat/short-description
     prompt: |
       Detailed implementation instructions for a standalone agent.
       Include: what to build, which files to look at for patterns,
       what tests to write, and any constraints.
+      Reference code is available at /ref if needed.
 
   - branch: feat/another-feature
     prompt: |
