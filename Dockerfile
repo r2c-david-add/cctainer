@@ -8,16 +8,22 @@ RUN apt-get update && apt-get install -y \
     ripgrep \
     gh \
     build-essential \
-    python3 \
-    python3-pip \
-    python3-venv \
-    python3-dev \
-    pipx \
+    libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
+    libsqlite3-dev libncurses5-dev libffi-dev liblzma-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Python dev tooling (installed globally via pipx for the claude user later)
-# Also make python3 the default `python`
-RUN ln -sf /usr/bin/python3 /usr/bin/python
+# Install Python 3.12 from source (bookworm only ships 3.11, wtf-sdk needs 3.12+)
+ARG PYTHON_VERSION=3.12.8
+RUN curl -fsSL https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz | tar xz \
+    && cd Python-${PYTHON_VERSION} \
+    && ./configure --enable-optimizations --prefix=/usr/local \
+    && make -j$(nproc) \
+    && make altinstall \
+    && cd .. && rm -rf Python-${PYTHON_VERSION} \
+    && ln -sf /usr/local/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/local/bin/python3.12 /usr/bin/python \
+    && ln -sf /usr/local/bin/pip3.12 /usr/bin/pip3 \
+    && pip3 install --no-cache-dir pipx
 
 # Install Claude Code and Google Workspace CLI globally
 RUN npm install -g @anthropic-ai/claude-code @googleworkspace/cli
@@ -38,8 +44,25 @@ RUN pipx install semgrep && \
     pipx install mypy && \
     pipx install pytest
 
-# Make pipx binaries available
-ENV PATH="/home/claude/.local/bin:${PATH}"
+# Create a venv for wtf-sdk and workflow dependencies
+RUN python3 -m venv /home/claude/.wtf-venv
+
+# Make pipx binaries and wtf venv available
+ENV PATH="/home/claude/.wtf-venv/bin:/home/claude/.local/bin:${PATH}"
+
+# Pre-install wtf-sdk dependencies so installs are fast at runtime.
+# The actual wtf-sdk is mounted from host at /wtf and installed via pip install -e /wtf
+RUN /home/claude/.wtf-venv/bin/pip install --no-cache-dir \
+    claude-agent-sdk>=0.1.37 \
+    click>=8.1 \
+    deepmerge>=2.0 \
+    inflection>=0.5 \
+    jinja2>=3.1 \
+    kubernetes>=28.0 \
+    metaflow>=2.19.19 \
+    opentelemetry-api>=1.20 \
+    opentelemetry-exporter-otlp-proto-http>=1.20 \
+    opentelemetry-sdk>=1.20
 
 # ~/.claude is mounted from the host at runtime to provide
 # user profile, MCP config, and settings.

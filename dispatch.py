@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import time
+from collections import deque
 from pathlib import Path
 
 try:
@@ -117,12 +118,14 @@ def launch_container(worktree: str, prompt: str, branch: str, log_path: str,
         proc = subprocess.Popen(
             [
                 "docker", "run", "--rm",
+                "--tmpfs", "/tmp:size=2g",
                 "-v", f"{worktree}:/src",
                 "-v", f"{home}/.claude.json:/home/claude/.claude.json:ro",
                 "-v", f"{home}/.claude:/home/claude/.claude",
                 "-v", f"{home}/.config/gh:/home/claude/.config/gh:ro",
                 "-v", f"{home}/.config/gws:/home/claude/.config/gws",
                 "-e", f"ANTHROPIC_API_KEY={os.environ.get('ANTHROPIC_API_KEY', '')}",
+                "-e", "CLAUDECODE=",
                 *mount_args,
                 "cctainer:latest",
                 "--print", prompt,
@@ -133,7 +136,7 @@ def launch_container(worktree: str, prompt: str, branch: str, log_path: str,
     return proc
 
 
-def dispatch(manifest_path: str):
+def dispatch(manifest_path: str, parallel: int = 4):
     manifest = load_manifest(manifest_path)
     repo = manifest["repo"]
     base = manifest["base"]
@@ -163,21 +166,25 @@ def dispatch(manifest_path: str):
         print(f"  {branch} -> {wt}")
     print()
 
-    # Launch all containers
-    print("Launching agents...")
-    procs = {}
-    for feat in features:
-        branch = feat["branch"]
-        prompt = feat["prompt"]
-        print(f"  {branch}")
-        procs[branch] = launch_container(worktrees[branch], prompt, branch, logs, mounts)
+    # Launch containers with bounded concurrency
+    print(f"Launching agents ({parallel} at a time)...")
     print()
 
-    print("Waiting for agents to complete...")
-    print()
-
+    pending = deque(features)
+    procs = {}  # branch -> Popen
     completed = set()
-    while len(completed) < len(procs):
+    total = len(features)
+
+    while pending or len(completed) < total:
+        # Fill up to `parallel` active slots
+        while pending and (len(procs) - len(completed)) < parallel:
+            feat = pending.popleft()
+            branch = feat["branch"]
+            prompt = feat["prompt"]
+            print(f"  Starting: {branch}")
+            procs[branch] = launch_container(worktrees[branch], prompt, branch, logs, mounts)
+
+        # Poll running processes
         for branch, proc in procs.items():
             if branch in completed:
                 continue
@@ -186,8 +193,10 @@ def dispatch(manifest_path: str):
                 completed.add(branch)
                 status = "done" if ret == 0 else f"failed (exit {ret})"
                 log_name = branch.replace("/", "-")
-                print(f"  [{len(completed)}/{len(procs)}] {branch}: {status}  (log: {log_name}.log)")
-        time.sleep(2)
+                print(f"  [{len(completed)}/{total}] {branch}: {status}  (log: {log_name}.log)")
+
+        if len(completed) < total:
+            time.sleep(2)
 
     print()
     print("All agents finished.")
@@ -246,6 +255,8 @@ def main():
 
     p_dispatch = sub.add_parser("dispatch", help="Launch agents from a manifest")
     p_dispatch.add_argument("manifest", help="Path to YAML manifest file")
+    p_dispatch.add_argument("--parallel", "-j", type=int, default=4,
+                            help="Max concurrent containers (default: 4)")
 
     p_status = sub.add_parser("status", help="Check status of running agents")
     p_status.add_argument("manifest", help="Path to YAML manifest file")
@@ -253,7 +264,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "dispatch":
-        dispatch(args.manifest)
+        dispatch(args.manifest, parallel=args.parallel)
     elif args.command == "status":
         status(args.manifest)
 

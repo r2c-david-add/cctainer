@@ -27,6 +27,8 @@ CLAUDE_MOUNTS=(
     -v "$HOME/.config/gh:/home/claude/.config/gh:ro"
     -v "$HOME/.config/gws:/home/claude/.config/gws"
     -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
+    -e "CLAUDECODE="
+    --tmpfs /tmp:size=2g
 )
 
 # Parse -v flags from args, return remaining args in REMAINING_ARGS
