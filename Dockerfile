@@ -68,6 +68,10 @@ RUN /home/claude/.wtf-venv/bin/pip install --no-cache-dir \
 # Auth is via ANTHROPIC_API_KEY env var at runtime.
 # ~/.claude is created for Claude Code's internal use (not mounted from host
 # to avoid write contention when running concurrent containers).
+# Mark all directories as safe for git (wtf-sdk clones to /tmp, semgrep ci
+# needs git access in the cloned repo and sometimes in /src)
+RUN git config --global --add safe.directory '*'
+
 RUN mkdir -p /home/claude/.claude
 
 ENTRYPOINT ["claude", "--dangerously-skip-permissions"]
