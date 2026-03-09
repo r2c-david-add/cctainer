@@ -62,11 +62,12 @@ RUN /home/claude/.wtf-venv/bin/pip install --no-cache-dir \
     metaflow>=2.19.19 \
     opentelemetry-api>=1.20 \
     opentelemetry-exporter-otlp-proto-http>=1.20 \
-    opentelemetry-sdk>=1.20
+    opentelemetry-sdk>=1.20 \
+    pydantic-ai>=1.66.0
 
-# ~/.claude is mounted from the host at runtime to provide
-# user profile, MCP config, and settings.
-# ~/.config/gws is mounted for Google Workspace OAuth tokens.
-RUN mkdir -p /home/claude/.claude /home/claude/.config/gws
+# Auth is via ANTHROPIC_API_KEY env var at runtime.
+# ~/.claude is created for Claude Code's internal use (not mounted from host
+# to avoid write contention when running concurrent containers).
+RUN mkdir -p /home/claude/.claude
 
 ENTRYPOINT ["claude", "--dangerously-skip-permissions"]
