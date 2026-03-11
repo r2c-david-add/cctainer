@@ -9,8 +9,10 @@ streams status to the terminal.
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections import deque
 from pathlib import Path
@@ -104,8 +106,19 @@ def log_dir_for(repo: str) -> str:
     return os.path.join(os.path.dirname(repo), f"{repo_name}--_logs")
 
 
+def copy_claude_json(tmp_dir: str, branch: str) -> str:
+    """Copy ~/.claude.json to a temp file so each container gets its own."""
+    home = os.path.expanduser("~")
+    src = os.path.join(home, ".claude.json")
+    if not os.path.exists(src):
+        return ""
+    dest = os.path.join(tmp_dir, f"claude-{branch.replace('/', '-')}.json")
+    shutil.copy2(src, dest)
+    return dest
+
+
 def launch_container(worktree: str, prompt: str, branch: str, log_path: str,
-                     extra_mounts: list) -> subprocess.Popen:
+                     extra_mounts: list, claude_json_copy: str) -> subprocess.Popen:
     """Launch a cctainer in the background with the given prompt."""
     log_file = os.path.join(log_path, f"{branch.replace('/', '-')}.log")
     home = os.path.expanduser("~")
@@ -114,12 +127,17 @@ def launch_container(worktree: str, prompt: str, branch: str, log_path: str,
     for m in extra_mounts:
         mount_args.extend(["-v", f"{m['src']}:{m['dst']}:ro"])
 
+    claude_json_args = []
+    if claude_json_copy:
+        claude_json_args = ["-v", f"{claude_json_copy}:/home/claude/.claude.json"]
+
     with open(log_file, "w") as log:
         proc = subprocess.Popen(
             [
                 "docker", "run", "--rm",
                 "--tmpfs", "/tmp:size=2g",
                 "-v", f"{worktree}:/src",
+                *claude_json_args,
                 "-v", f"{home}/.config/gh:/home/claude/.config/gh:ro",
                 "-e", f"ANTHROPIC_API_KEY={os.environ.get('ANTHROPIC_API_KEY', '')}",
                 "-e", f"SEMGREP_APP_TOKEN={os.environ.get('SEMGREP_APP_TOKEN', '')}",
@@ -164,6 +182,9 @@ def dispatch(manifest_path: str, parallel: int = 4):
         print(f"  {branch} -> {wt}")
     print()
 
+    # Each container gets its own copy of .claude.json to avoid write contention
+    tmp_dir = tempfile.mkdtemp(prefix="cctainer-")
+
     # Launch containers with bounded concurrency
     print(f"Launching agents ({parallel} at a time)...")
     print()
@@ -179,8 +200,9 @@ def dispatch(manifest_path: str, parallel: int = 4):
             feat = pending.popleft()
             branch = feat["branch"]
             prompt = feat["prompt"]
+            cj_copy = copy_claude_json(tmp_dir, branch)
             print(f"  Starting: {branch}")
-            procs[branch] = launch_container(worktrees[branch], prompt, branch, logs, mounts)
+            procs[branch] = launch_container(worktrees[branch], prompt, branch, logs, mounts, cj_copy)
 
         # Poll running processes
         for branch, proc in procs.items():
@@ -195,6 +217,9 @@ def dispatch(manifest_path: str, parallel: int = 4):
 
         if len(completed) < total:
             time.sleep(2)
+
+    # Clean up temp copies of .claude.json
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     print()
     print("All agents finished.")
