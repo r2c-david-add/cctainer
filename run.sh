@@ -21,8 +21,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 #   ./run.sh build                                             # rebuild the image
 
 # Common mounts and env vars for containerized Claude Code sessions.
-# Auth is via ANTHROPIC_API_KEY env var — no need to mount ~/.claude.json
-# or ~/.claude (which causes write contention across concurrent containers).
+# Auth via ANTHROPIC_API_KEY env var (set by cc() shell function).
+# No ~/.claude.json or ~/.claude mounts — avoids write contention across
+# concurrent containers and conflicts with host subscription auth.
 CLAUDE_MOUNTS=(
     -v "$HOME/.config/gh:/home/claude/.config/gh:ro"
     -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
