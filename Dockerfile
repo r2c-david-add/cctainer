@@ -78,6 +78,7 @@ RUN /home/claude/.wtf-venv/bin/pip install --no-cache-dir \
 # needs git access in the cloned repo and sometimes in /src)
 RUN git config --global --add safe.directory '*'
 
-RUN mkdir -p /home/claude/.claude
+RUN mkdir -p /home/claude/.claude && \
+    echo '{"hasCompletedOnboarding": true, "acceptedTerms": true}' > /home/claude/.claude/settings.json
 
 ENTRYPOINT ["claude", "--dangerously-skip-permissions"]
