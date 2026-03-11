@@ -20,13 +20,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 #   ./run.sh dispatch cc-manifest.yml                          # fan out agents from manifest
 #   ./run.sh build                                             # rebuild the image
 
-# Common mounts for Claude auth, config, MCP, and Google Workspace
+# Common mounts and env vars for containerized Claude Code sessions.
+# Auth is via ANTHROPIC_API_KEY env var — no need to mount ~/.claude.json
+# or ~/.claude (which causes write contention across concurrent containers).
 CLAUDE_MOUNTS=(
-    -v "$HOME/.claude.json:/home/claude/.claude.json:ro"
-    -v "$HOME/.claude:/home/claude/.claude"
     -v "$HOME/.config/gh:/home/claude/.config/gh:ro"
-    -v "$HOME/.config/gws:/home/claude/.config/gws"
     -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}"
+    -e "SEMGREP_APP_TOKEN=${SEMGREP_APP_TOKEN:-}"
     -e "CLAUDECODE="
     --tmpfs /tmp:size=2g
 )
@@ -107,7 +107,7 @@ Set \`repo: /src/${REPO_NAME}\` in the manifest."
     exec docker run --rm -it \
         -v "$PARENT_DIR":/src \
         "${CLAUDE_MOUNTS[@]}" \
-        "${EXTRA_MOUNTS[@]}" \
+        ${EXTRA_MOUNTS[@]+"${EXTRA_MOUNTS[@]}"} \
         cctainer:latest \
         --system-prompt "$PLAN_PROMPT"
 fi
@@ -148,6 +148,6 @@ shift 2>/dev/null || true
 exec docker run --rm -it \
     -v "$SRC_DIR":/src \
     "${CLAUDE_MOUNTS[@]}" \
-    "${EXTRA_MOUNTS[@]}" \
+    ${EXTRA_MOUNTS[@]+"${EXTRA_MOUNTS[@]}"} \
     cctainer:latest \
     "$@"

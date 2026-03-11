@@ -1,4 +1,4 @@
-FROM node:22-bookworm
+FROM node:22-trixie
 
 # System dependencies useful for Claude Code workflows
 RUN apt-get update && apt-get install -y \
@@ -34,6 +34,12 @@ RUN mkdir -p /src
 # Set up a non-root user (claude code works fine as non-root)
 RUN useradd -m -s /bin/bash claude
 RUN chown -R claude:claude /src
+
+# Mandoline binary for program slicing (used by wtf-sdk enrichment step)
+# Pre-downloaded from: gh release download v0.3.2 -R semgrep/mandoline
+# Both architectures included; TARGETARCH selects the right one at build time
+ARG TARGETARCH
+COPY --chmod=755 mandoline-linux-${TARGETARCH:-arm64} /usr/local/bin/mandoline
 
 USER claude
 WORKDIR /src
