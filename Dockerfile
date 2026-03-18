@@ -1,29 +1,32 @@
-FROM node:22-trixie
+FROM ubuntu:24.04
 
-# System dependencies useful for Claude Code workflows
+# Node.js 22 via NodeSource
+RUN apt-get update && apt-get install -y ca-certificates curl gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list
+
+# GitHub CLI repo
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+       | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+       > /etc/apt/sources.list.d/github-cli.list
+
+# System dependencies
 RUN apt-get update && apt-get install -y \
+    nodejs \
     git \
-    curl \
     jq \
     ripgrep \
     gh \
+    python3 \
+    python3-venv \
+    python3-pip \
+    pipx \
     build-essential \
-    libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
-    libsqlite3-dev libncurses5-dev libffi-dev liblzma-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# Install Python 3.12 from source (bookworm only ships 3.11, wtf-sdk needs 3.12+)
-ARG PYTHON_VERSION=3.12.8
-RUN curl -fsSL https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz | tar xz \
-    && cd Python-${PYTHON_VERSION} \
-    && ./configure --enable-optimizations --prefix=/usr/local \
-    && make -j$(nproc) \
-    && make altinstall \
-    && cd .. && rm -rf Python-${PYTHON_VERSION} \
-    && ln -sf /usr/local/bin/python3.12 /usr/bin/python3 \
-    && ln -sf /usr/local/bin/python3.12 /usr/bin/python \
-    && ln -sf /usr/local/bin/pip3.12 /usr/bin/pip3 \
-    && pip3 install --no-cache-dir pipx
 
 # Install Claude Code and Google Workspace CLI globally
 RUN npm install -g @anthropic-ai/claude-code @googleworkspace/cli
