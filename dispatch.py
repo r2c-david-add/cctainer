@@ -67,16 +67,16 @@ def load_manifest(path: str, repo_override: str = None) -> dict:
     return manifest
 
 
-def worktree_path(repo: str, branch: str) -> str:
-    """Sibling worktree: ~/code/my-project--feat-add-widget"""
+def worktree_path(project_dir: str, repo: str, branch: str) -> str:
+    """Worktree inside project dir: project/repo--feat-add-widget"""
     repo_name = os.path.basename(repo)
     branch_suffix = branch.replace("/", "-")
-    return os.path.join(os.path.dirname(repo), f"{repo_name}--{branch_suffix}")
+    return os.path.join(project_dir, f"{repo_name}--{branch_suffix}")
 
 
-def create_worktree(repo: str, base: str, branch: str) -> str:
-    """Create a git worktree as a sibling directory, return the path."""
-    wt_dir = worktree_path(repo, branch)
+def create_worktree(project_dir: str, repo: str, base: str, branch: str) -> str:
+    """Create a git worktree inside the project directory, return the path."""
+    wt_dir = worktree_path(project_dir, repo, branch)
 
     if os.path.isdir(wt_dir):
         print(f"  Worktree already exists: {wt_dir}")
@@ -101,9 +101,8 @@ def create_worktree(repo: str, base: str, branch: str) -> str:
     return wt_dir
 
 
-def log_dir_for(repo: str) -> str:
-    repo_name = os.path.basename(repo)
-    return os.path.join(os.path.dirname(repo), f"{repo_name}--_logs")
+def log_dir_for(project_dir: str) -> str:
+    return os.path.join(project_dir, "_logs")
 
 
 def copy_claude_json(tmp_dir: str, branch: str) -> str:
@@ -159,9 +158,13 @@ def dispatch(manifest_path: str, parallel: int = 4):
     features = manifest["features"]
     mounts = manifest.get("mounts", [])
 
-    logs = log_dir_for(repo)
+    # Project dir is the directory containing the manifest
+    project_dir = str(Path(manifest_path).resolve().parent)
+
+    logs = log_dir_for(project_dir)
     os.makedirs(logs, exist_ok=True)
 
+    print(f"Project:  {project_dir}")
     print(f"Repo:     {repo}")
     print(f"Base:     {base}")
     print(f"Features: {len(features)}")
@@ -177,7 +180,7 @@ def dispatch(manifest_path: str, parallel: int = 4):
     worktrees = {}
     for feat in features:
         branch = feat["branch"]
-        wt = create_worktree(repo, base, branch)
+        wt = create_worktree(project_dir, repo, base, branch)
         worktrees[branch] = wt
         print(f"  {branch} -> {wt}")
     print()
@@ -223,7 +226,7 @@ def dispatch(manifest_path: str, parallel: int = 4):
 
     print()
     print("All agents finished.")
-    print(f"Worktrees are sibling directories next to {repo}")
+    print(f"Worktrees in {project_dir}/")
     print(f"Logs at {logs}/")
 
 
@@ -231,7 +234,8 @@ def status(manifest_path: str):
     """Show status of running containers and worktree branches."""
     manifest = load_manifest(manifest_path)
     repo = manifest["repo"]
-    logs = log_dir_for(repo)
+    project_dir = str(Path(manifest_path).resolve().parent)
+    logs = log_dir_for(project_dir)
 
     # Check which containers are still running
     result = subprocess.run(
@@ -241,6 +245,7 @@ def status(manifest_path: str):
     )
     running = result.stdout.strip()
 
+    print(f"Project: {project_dir}")
     print(f"Running cctainer instances: {len(running.splitlines()) if running else 0}")
     if running:
         print(running)
@@ -250,7 +255,7 @@ def status(manifest_path: str):
     print("Worktrees:")
     for feat in manifest.get("features", []):
         branch = feat["branch"]
-        wt = worktree_path(repo, branch)
+        wt = worktree_path(project_dir, repo, branch)
         exists = "exists" if os.path.isdir(wt) else "missing"
         print(f"  {branch}: {exists} ({wt})")
     print()

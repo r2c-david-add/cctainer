@@ -8,7 +8,7 @@ Your job is to explore the codebase, discuss the work with the user, and produce
 2. **Explore the codebase** — Read relevant code to understand patterns, conventions, and architecture
 3. **Break down the work** — Identify independent features/tasks that can run in parallel
 4. **Write detailed prompts** — Each prompt should give a standalone agent enough context to implement the feature without asking questions
-5. **Write the manifest** — Save it as `/src/cc-manifest.yml` (at the mount root, above the repo)
+5. **Write the manifest** — Save it as `/src/manifest.yml`
 
 ## Manifest format
 
@@ -46,6 +46,7 @@ features:
 ## Important
 
 - The `repo` field should point to the repo subdirectory under `/src` (e.g., `/src/my-project`)
-- The manifest file goes at `/src/cc-manifest.yml` — above the repo, not inside it
+- The manifest file goes at `/src/manifest.yml`
 - The `base` field is the branch to create worktrees from
 - Branch names should use the `feat/`, `fix/`, or `chore/` prefix convention
+- Dispatched worktrees will be created as siblings inside the project directory (e.g., `/src/my-project--feat-add-widget/`)
