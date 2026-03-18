@@ -105,19 +105,51 @@ def log_dir_for(project_dir: str) -> str:
     return os.path.join(project_dir, "_logs")
 
 
-def copy_claude_json(tmp_dir: str, branch: str) -> str:
-    """Copy ~/.claude.json to a temp file so each container gets its own."""
+def copy_claude_home(tmp_dir: str, branch: str) -> str:
+    """Create a per-container copy of Claude config files.
+
+    Copies ~/.claude.json and relevant ~/.claude/ files (settings, MCP plugins,
+    OAuth credentials) into a temp directory. Returns the path to the copy.
+    Each container gets its own writable copy to avoid contention.
+    """
     home = os.path.expanduser("~")
-    src = os.path.join(home, ".claude.json")
-    if not os.path.exists(src):
-        return ""
-    dest = os.path.join(tmp_dir, f"claude-{branch.replace('/', '-')}.json")
-    shutil.copy2(src, dest)
-    return dest
+    suffix = branch.replace("/", "-")
+    copy_dir = os.path.join(tmp_dir, f"claude-home-{suffix}")
+    os.makedirs(copy_dir, exist_ok=True)
+
+    # ~/.claude.json — top-level auth/subscription
+    claude_json = os.path.join(home, ".claude.json")
+    if os.path.isfile(claude_json):
+        shutil.copy2(claude_json, os.path.join(copy_dir, ".claude.json"))
+
+    # ~/.claude/ internals
+    claude_dir = os.path.join(copy_dir, ".claude")
+    os.makedirs(claude_dir, exist_ok=True)
+
+    # Settings (always create — needed for onboarding bypass)
+    with open(os.path.join(claude_dir, "settings.json"), "w") as f:
+        f.write('{"hasCompletedOnboarding": true, "acceptedTerms": true}')
+
+    # MCP OAuth credentials
+    creds = os.path.join(home, ".claude", ".credentials.json")
+    if os.path.isfile(creds):
+        shutil.copy2(creds, os.path.join(claude_dir, ".credentials.json"))
+
+    # MCP auth cache
+    auth_cache = os.path.join(home, ".claude", "mcp-needs-auth-cache.json")
+    if os.path.isfile(auth_cache):
+        shutil.copy2(auth_cache, os.path.join(claude_dir, "mcp-needs-auth-cache.json"))
+
+    # MCP plugin configs
+    plugins = os.path.join(home, ".claude", "plugins")
+    if os.path.isdir(plugins):
+        shutil.copytree(plugins, os.path.join(claude_dir, "plugins"))
+
+    return copy_dir
 
 
 def launch_container(worktree: str, prompt: str, branch: str, log_path: str,
-                     extra_mounts: list, claude_json_copy: str) -> subprocess.Popen:
+                     extra_mounts: list, claude_home_copy: str) -> subprocess.Popen:
     """Launch a cctainer in the background with the given prompt."""
     log_file = os.path.join(log_path, f"{branch.replace('/', '-')}.log")
     home = os.path.expanduser("~")
@@ -126,9 +158,14 @@ def launch_container(worktree: str, prompt: str, branch: str, log_path: str,
     for m in extra_mounts:
         mount_args.extend(["-v", f"{m['src']}:{m['dst']}:ro"])
 
-    claude_json_args = []
-    if claude_json_copy:
-        claude_json_args = ["-v", f"{claude_json_copy}:/home/claude/.claude.json"]
+    claude_mounts = []
+    if claude_home_copy:
+        claude_json = os.path.join(claude_home_copy, ".claude.json")
+        claude_dir = os.path.join(claude_home_copy, ".claude")
+        if os.path.isfile(claude_json):
+            claude_mounts.extend(["-v", f"{claude_json}:/home/claude/.claude.json"])
+        if os.path.isdir(claude_dir):
+            claude_mounts.extend(["-v", f"{claude_dir}:/home/claude/.claude"])
 
     with open(log_file, "w") as log:
         proc = subprocess.Popen(
@@ -136,7 +173,7 @@ def launch_container(worktree: str, prompt: str, branch: str, log_path: str,
                 "docker", "run", "--rm",
                 "--tmpfs", "/tmp:size=2g",
                 "-v", f"{worktree}:/src",
-                *claude_json_args,
+                *claude_mounts,
                 "-v", f"{home}/.config/gh:/home/claude/.config/gh:ro",
                 "-e", f"ANTHROPIC_API_KEY={os.environ.get('ANTHROPIC_API_KEY', '')}",
                 "-e", f"SEMGREP_APP_TOKEN={os.environ.get('SEMGREP_APP_TOKEN', '')}",
@@ -185,7 +222,7 @@ def dispatch(manifest_path: str, parallel: int = 4):
         print(f"  {branch} -> {wt}")
     print()
 
-    # Each container gets its own copy of .claude.json to avoid write contention
+    # Each container gets its own copy of Claude config to avoid write contention
     tmp_dir = tempfile.mkdtemp(prefix="cctainer-")
 
     # Launch containers with bounded concurrency
@@ -203,9 +240,9 @@ def dispatch(manifest_path: str, parallel: int = 4):
             feat = pending.popleft()
             branch = feat["branch"]
             prompt = feat["prompt"]
-            cj_copy = copy_claude_json(tmp_dir, branch)
+            ch_copy = copy_claude_home(tmp_dir, branch)
             print(f"  Starting: {branch}")
-            procs[branch] = launch_container(worktrees[branch], prompt, branch, logs, mounts, cj_copy)
+            procs[branch] = launch_container(worktrees[branch], prompt, branch, logs, mounts, ch_copy)
 
         # Poll running processes
         for branch, proc in procs.items():
@@ -221,7 +258,7 @@ def dispatch(manifest_path: str, parallel: int = 4):
         if len(completed) < total:
             time.sleep(2)
 
-    # Clean up temp copies of .claude.json
+    # Clean up temp copies of Claude config
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
     print()

@@ -39,11 +39,32 @@ COMMON_MOUNTS=(
     --tmpfs /tmp:size=2g
 )
 
-# Copy ~/.claude.json to a temp file so each container gets its own copy.
-copy_claude_json() {
-    CLAUDE_JSON_COPY=$(mktemp)
-    cp "$HOME/.claude.json" "$CLAUDE_JSON_COPY"
-    trap "rm -f '$CLAUDE_JSON_COPY'" EXIT
+# Create a per-container copy of Claude config files.
+# Each container gets its own writable copy to avoid contention when
+# running multiple containers concurrently (OAuth token refreshes, etc.).
+# Sets CLAUDE_HOME_COPY to the temp directory path.
+copy_claude_home() {
+    CLAUDE_HOME_COPY=$(mktemp -d "${TMPDIR:-/tmp}/cctainer-claude-XXXXXX")
+    trap "rm -rf '$CLAUDE_HOME_COPY'" EXIT
+
+    # ~/.claude.json — top-level auth/subscription
+    if [ -f "$HOME/.claude.json" ]; then
+        cp "$HOME/.claude.json" "$CLAUDE_HOME_COPY/.claude.json"
+    fi
+
+    # ~/.claude/ internals — settings, MCP plugins, OAuth credentials
+    mkdir -p "$CLAUDE_HOME_COPY/.claude"
+    echo '{"hasCompletedOnboarding": true, "acceptedTerms": true}' \
+        > "$CLAUDE_HOME_COPY/.claude/settings.json"
+    if [ -f "$HOME/.claude/.credentials.json" ]; then
+        cp "$HOME/.claude/.credentials.json" "$CLAUDE_HOME_COPY/.claude/.credentials.json"
+    fi
+    if [ -f "$HOME/.claude/mcp-needs-auth-cache.json" ]; then
+        cp "$HOME/.claude/mcp-needs-auth-cache.json" "$CLAUDE_HOME_COPY/.claude/mcp-needs-auth-cache.json"
+    fi
+    if [ -d "$HOME/.claude/plugins" ]; then
+        cp -r "$HOME/.claude/plugins" "$CLAUDE_HOME_COPY/.claude/plugins"
+    fi
 }
 
 # Build /shared mounts from a list of paths (bash 3.2 compatible).
@@ -235,10 +256,11 @@ The repo to plan for is at \`/src/${REPO_NAME}\`.
 Write the manifest to \`/src/manifest.yml\`.
 Set \`repo: /src/${REPO_NAME}\` in the manifest."
 
-    copy_claude_json
+    copy_claude_home
     exec docker run --rm -it \
         -v "$PROJECT_DIR":/src \
-        -v "$CLAUDE_JSON_COPY:/home/claude/.claude.json" \
+        -v "$CLAUDE_HOME_COPY/.claude.json:/home/claude/.claude.json" \
+        -v "$CLAUDE_HOME_COPY/.claude:/home/claude/.claude" \
         "${COMMON_MOUNTS[@]}" \
         ${SHARED_MOUNTS[@]+"${SHARED_MOUNTS[@]}"} \
         cctainer:latest \
@@ -274,10 +296,11 @@ if ! docker image inspect cctainer:latest &>/dev/null; then
     exit 1
 fi
 
-copy_claude_json
+copy_claude_home
 exec docker run --rm -it \
     -v "$SRC_DIR":/src \
-    -v "$CLAUDE_JSON_COPY:/home/claude/.claude.json" \
+    -v "$CLAUDE_HOME_COPY/.claude.json:/home/claude/.claude.json" \
+    -v "$CLAUDE_HOME_COPY/.claude:/home/claude/.claude" \
     "${COMMON_MOUNTS[@]}" \
     ${SHARED_MOUNTS[@]+"${SHARED_MOUNTS[@]}"} \
     cctainer:latest \
